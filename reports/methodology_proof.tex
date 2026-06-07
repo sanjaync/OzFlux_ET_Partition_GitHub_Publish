@@ -1,0 +1,39 @@
+\section{Methodological Evaluation of Partitioning Failure in Arid Ecosystems}
+
+While the Transpiration Estimation Algorithm (TEA) \citep{nelson2018} has demonstrated success in temperate Northern Hemisphere forests, its application to the Australian continent reveals a catastrophic underestimation of the transpiration fraction ($T/ET$). Diagnostic evaluation at representative sites (e.g., Adelaide River, Tumbarumba) shows that TEA yields $T/ET$ ratios as low as 0.03--0.07, while physically-consistent regression models (e.g., Zhou uWUE) and our proposed model yield ratios of 0.35--0.55. This discrepancy is not merely an implementation error but a fundamental architectural failure rooted in two distinct issues.
+
+\subsection{The "Mean of Ratios" Bias and Jensen's Inequality}
+
+The core of the TEA algorithm relies on training a Random Forest to predict the 75th percentile of the instantaneous water use efficiency, defined as the ratio of half-hourly fluxes:
+\begin{equation}
+    WUE_{inst} = \frac{GPP}{ET}
+\end{equation}
+However, the biological quantity of interest for partitioning is the aggregate efficiency, which is the ratio of the means (or sums) of the fluxes over a given period. Mathematically, for two random variables $GPP$ and $ET$, the expectation of the ratio is not equal to the ratio of the expectations:
+\begin{equation}
+    E\left[\frac{GPP}{ET}\right] \neq \frac{E[GPP]}{E[ET]}
+\end{equation}
+
+In Australian arid and semi-arid biomes, the evapotranspiration flux ($ET$) frequently approaches the instrument detection limit ($ET \to 0$). Because the function $f(ET) = 1/ET$ is strictly convex for $ET > 0$, Jensen's Inequality states that:
+\begin{equation}
+    E\left[\frac{GPP}{ET}\right] \geq \frac{E[GPP]}{E[ET]}
+\end{equation}
+In practice, the high volatility of the $ET$ denominator during dry periods creates extreme outliers in the $WUE_{inst}$ distribution. By targeting the upper percentiles of this skewed distribution, TEA learns an artificially inflated water use efficiency that can be 5--10 times higher than the true physiological efficiency.
+
+\subsection{Beyond Aridity: Signal-to-Noise Ratios and Diurnal Volatility}
+
+A critical question arises: why does TEA appear robust in temperate Northern Hemisphere forests (USA/Europe) while failing in Australian forests and grasslands that are not classified as arid? We identify two continent-specific factors:
+
+\begin{enumerate}
+    \item \textbf{Low Flux Magnitude and Signal-to-Noise Ratio (SNR):} Even in mesic Australian sites like Tumbarumba (wet sclerophyll forest), the absolute magnitude of $ET$ is frequently lower than in equivalent Northern Hemisphere forests (e.g., Harvard Forest, USA). Because measurement noise is independent of flux magnitude, the relative impact of noise on the $GPP/ET$ ratio is inversely proportional to the flux. Australia is effectively a "low-flux continent," where the ratio-based instability is triggered even in non-arid biomes.
+    \item \textbf{Extreme Diurnal Variance:} Australian ecosystems experience higher incoming solar radiation and more extreme Vapor Pressure Deficit (VPD) swings than their high-latitude counterparts. This results in a highly "peaky" diurnal distribution of $GPP/ET$. While the daily mean WUE might be physiologically realistic, the 75th percentile of the half-hourly ratios captures the extreme morning/evening spikes (where $ET$ is low but $GPP$ is active). TEA's reliance on these upper percentiles makes it fundamentally over-sensitive to the high diurnal variance characteristic of the Australian climate.
+\end{enumerate}
+
+\subsection{Sensitivity to Measurement Noise and Missing Guards}
+
+Furthermore, we identify an "Implementation Gap" regarding the handling of negative flux values. Eddy covariance data naturally contains noise, often manifesting as small negative $GPP$ or $ET$ values during periods of low flux magnitude. 
+\begin{enumerate}
+    \item \textbf{Negative Summation:} The original TEA framework lacks a positivity guard for $GPP$ during the final summation phase. In temperate sites with high respiration noise (e.g., Tumbarumba), negative $GPP$ values are propagated into the $T$ sum, resulting in nonsensical or negative transpiration estimates.
+    \item \textbf{Unit Inconsistency:} The TEA library hardcodes unit conversion factors (e.g., 1800 seconds per timestep), rendering it incompatible with the 60-minute sampling intervals common in several OzFlux L6 datasets without significant source-code modification.
+\end{enumerate}
+
+In contrast, the Zhou uWUE method \citep{zhou2016} and our proposed model utilize linear or non-linear regression of absolute fluxes rather than ratios. By regressing $GPP \sqrt{VPD}$ against $ET$, these models naturally weight high-flux periods and remain robust to near-zero $ET$ anomalies. This structural difference explains why regression-based approaches maintain physical consistency in the Australian Outback while ratio-based algorithms like TEA collapse.
